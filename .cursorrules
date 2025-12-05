@@ -1,0 +1,30 @@
+# Cursor Rules for Fine-Tuning LLM Project
+
+## File Creation Rules
+- NEVER create .md files (except README.md if explicitly requested)
+- Do not create documentation files unless explicitly requested
+- Focus on code implementation and testing
+
+## Code Quality
+- Always write tests for new code
+- Use pytest for testing
+- Follow existing code patterns and structure
+- Ensure all tests pass before completing tasks
+
+## Project Structure
+- Backend code in `backend/` directory
+- Tests in `tests/` directory
+- Frontend code in `frontend/` directory
+- Model files in `mistral-indian-law-final/` directory
+
+## Testing Requirements
+- All Python files should have corresponding test files
+- Test files should be named `test_*.py`
+- Use pytest fixtures from `tests/conftest.py`
+- Ensure all tests pass before marking tasks complete
+
+## Git and Version Control
+- Do not use git commands unless explicitly requested
+- Do not access git history unless explicitly requested
+- Focus on code creation and fixing errors
+
