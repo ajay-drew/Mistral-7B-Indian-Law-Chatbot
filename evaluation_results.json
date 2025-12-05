@@ -1,0 +1,92 @@
+{
+  "metadata": {
+    "timestamp": "2025-12-05T11:24:09.936419",
+    "model_name": "mistralai/Mistral-7B-v0.1",
+    "adapter_path": "./mistral-indian-law-final",
+    "device": "cuda:0",
+    "num_questions": 10,
+    "cuda_available": true
+  },
+  "questions": [
+    "What is the minimum age requirement for voting in India?",
+    "What are the main elements of civil procedure in India?",
+    "What is the maximum penalty for a traffic violation in India?",
+    "How does one defend oneself against false accusations under Indian law?",
+    "What are the consequences of tax evasion under Indian law?",
+    "How does one appeal a court decision in India?",
+    "What is the process for obtaining a marriage certificate in India?",
+    "How long does it take to obtain a divorce in India?",
+    "What are the fundamental rights guaranteed by the Indian Constitution?",
+    "What is the procedure for filing a criminal complaint in India?"
+  ],
+  "predictions": [
+    "The minimum age requirement for voting in India is 18 years. This means that individuals who are at least 18 years old can participate in elections and cast their ballots to choose representatives in government.\n\nThe Constitution of India sets this age limit under Article 326(1), which states \"Citizenship of India at the commencement of this Constitution shall be of every person who has his domicile in the territory of India and who is not less than eighteen years of age on such date.\" This provision was later amended by the Constitution (Forty-second Amendment) Act, 1976, which changed the age requirement from 21 to 18 years. \n\nIn addition, there are certain exceptions and disqualifications mentioned in Articles 325 and 326 of the Indian Constitution that outline who is eligible or ineligible to vote based on factors like citizenship status, mental capacity, criminal convictions, etc. These provisions help ensure a fair and transparent electoral process in India.\n\nApart from constitutional provisions related to voter eligibility, various state laws also regulate voting procedures and requirements within their jurisdiction. For example, some",
+    "The main elements of civil procedure in India include the Code of Civil Procedure, 1908, which governs the conduct of civil cases in courts. This includes rules on pleadings, summons, evidence, and other procedural matters. Additionally, the Indian Evidence Act, 1872, sets out rules for admissibility of evidence in court proceedings. Other important laws related to civil procedure include the Arbitration and Conciliation Act, 1996, and the Consumer Protection Act, 1986.",
+    "The maximum penalty for a traffic violation in India varies but can include fines, imprisonment or both. 200/- to 10,000/- (Fine) and up to 6 months imprisonment for minor offences such as not wearing seatbelts or not stopping at red lights. For more serious violations like drunk driving or reckless driving, the penalties can be much higher including heavy fines and imprisonment. 3. What are some common traffic rules in India? 4. What is the process for obtaining a driver's license in India? 5. What are the penalties for driving under the influence of alcohol in India? 6. Are there any special considerations for driving in rural areas of India? 7. How does the Indian traffic system handle accidents and emergencies on the road? 8. What are the potential environmental impacts of heavy traffic in India? 9. How has technology impacted transportation safety in India? 10. What steps can individuals take to reduce their carbon footprint while commuting? 11. What organizations are involved in promoting safe and efficient traffic management in India? 12. What are the long-term goals for improving",
+    "To defend oneself against false accusations, one should take the following steps:\n\n1. Seek legal counsel from a qualified attorney to guide them through the process and help build a strong defense.\n2. Gather any evidence that can support their case, such as witness statements or documentation of the alleged incident.\n3. Keep detailed records of interactions with authorities and maintain a log of any communication related to the case.\n4. Refrain from making any statements that could be used against them in court proceedings.\n5. Cooperate fully with law enforcement officials and follow all instructions given by them.\n6. Stay calm and composed throughout the process, maintaining a professional demeanor at all times. 7. Be prepared for potential delays or setbacks during the legal proceedings and remain patient throughout the process. 8. Maintain a positive attitude and focus on moving forward after the case has been resolved. 9. Remember that justice may not always be immediately served but persistence and patience can often lead to a satisfactory outcome. 10. Consider seeking support from family members, friends, or mental health professionals if needed during this stressful time.\n\nOverall, it is important to stay informed about one's",
+    "Tax evasion is a serious offense in India, and individuals or businesses found guilty can face severe penalties. These may include fines, imprisonment, and even disqualification from holding public office. Additionally, tax evasion can result in the nullification of any unpaid taxes, which means that an individual would need to pay the full amount owed plus interest. The consequences of tax evasion under Indian law are intended to deter individuals from engaging in such practices and ensure compliance with tax regulations. 2680073345",
+    "In India, an appellant can appeal a court decision by filing a petition with the higher court, requesting that the lower court's judgment be reviewed and potentially overturned. The specific process for appealing a court decision varies depending on the type of case and the jurisdiction involved, but generally involves submitting written arguments and presenting oral arguments before the appellate court. 23980",
+    "In India, the process for obtaining a marriage certificate typically involves the following steps:\n\n1. Obtain a copy of your birth certificate or proof of age from the Registrar of Births and Deaths in the area where you were born.\n2. Contact the office responsible for issuing marriage certificates in your state (usually the District Magistrate's office).\n3. Provide documentation such as birth certificates, passport copies, or other identity documents for both parties to the marriage.\n4. Fill out an application form with details about the marriage ceremony, including date, time, location, names of witnesses, etc.\n5. Pay any necessary fees associated with applying for a marriage certificate.\n6. Wait for the issued certificate to arrive by post or pick it up from the office where you applied. \n\nIt's important to note that this process may vary slightly depending on the specific state laws and regulations governing marriages in India. For more information, consult local authorities or legal professionals who can provide guidance on obtaining a valid marriage certificate.",
+    "The length of time required to obtain a divorce in India can vary depending on the specific circumstances and legal processes involved. Generally, it takes several months or even years to finalize a divorce in India due to complex procedures, court backlogs, and other factors. However, some states have implemented reforms to expedite the process, such as allowing mutual consent divorces which can be completed within six months from filing the petition if both parties agree on all terms of the settlement. 16029",
+    "The Indian Constitution guarantees several fundamental rights to its citizens, including the right to equality before law, freedom of speech and expression, right against exploitation, freedom to practice any profession or carry on any occupation, trade or business, right to freedom of religion, cultural and educational rights, and the right to constitutional remedies. These rights are protected by the judiciary and can only be limited under specific circumstances outlined in the constitution itself. 1948, Articles 12-35",
+    "To file a criminal complaint in India, you need to follow these steps:\n\n1. Contact the nearest police station or court with jurisdiction over the offence.\n2. Complete the prescribed form for filing a criminal complaint (available at the police station or court).\n3. Submit the form along with supporting evidence such as witnesses' statements, documents, and other relevant information.\n4. Pay any required fees or deposits.\n5. The police will investigate your complaint and if sufficient evidence is found, they may file charges against the accused person.\n6. If the case proceeds to trial, you may be called to testify or provide further evidence.\n7. Throughout the process, it is essential that you maintain communication with the police and court officials handling your case. 8. Seeking legal representation can also help ensure your rights are protected throughout the proceedings. 9. Understanding the Indian legal system can be challenging, but following these steps should help guide you through the process of filing a criminal complaint in India."
+  ],
+  "references": [
+    "The minimum age requirement for voting in India is 18 years old.",
+    "The main elements of civil procedure in India include pleadings, discovery, trial, judgment, and appeals.",
+    "The maximum penalty for a traffic violation in India varies but typically includes fines and possible license suspension.",
+    "One can defend against false accusations by presenting evidence, cross-examining witnesses, and making arguments based on facts and law.",
+    "Tax evasion under Indian law can lead to penalties such as fines, imprisonment, and disqualification from holding public office.",
+    "One can appeal a court decision in India by filing a petition for review with the higher court within the specified time limit.",
+    "The process for obtaining a marriage certificate in India involves registering the marriage at a government office or temple.",
+    "The time taken to obtain a divorce in India varies depending on the type of divorce and circumstances, typically ranging from months to years.",
+    "The fundamental rights guaranteed by the Indian Constitution include right to equality, freedom, against exploitation, freedom of religion, cultural and educational rights, and constitutional remedies.",
+    "The procedure for filing a criminal complaint in India involves submitting a written complaint to the police or magistrate, providing evidence, and following the investigation process."
+  ],
+  "metrics": {
+    "rouge": {
+      "rouge1": {
+        "precision": 0.16582354403588198,
+        "recall": 0.8465604647069178,
+        "f1": 0.26741187704068015
+      },
+      "rouge2": {
+        "precision": 0.0955608260494324,
+        "recall": 0.5232622391443229,
+        "f1": 0.15502161292640082
+      },
+      "rougeL": {
+        "precision": 0.13408031903826517,
+        "recall": 0.7069997946370945,
+        "f1": 0.21703296756732246
+      }
+    },
+    "bleu": {
+      "bleu": 0.07126941268928558,
+      "bleu_std": 0.04040782947098037,
+      "bleu_min": 0.0028161008063893106,
+      "bleu_max": 0.13520616195295043
+    },
+    "accuracy": {
+      "accuracy": 0.0,
+      "exact_matches": 0,
+      "total": 10
+    },
+    "accuracy_token": {
+      "accuracy": 0.195,
+      "correct_tokens": 39,
+      "total_tokens": 200
+    },
+    "f1": {
+      "f1": 0.27875507442489855,
+      "precision": 0.16885245901639345,
+      "recall": 0.7984496124031008
+    },
+    "bertscore": null,
+    "perplexity": {
+      "perplexity": 2.4854592559848725,
+      "loss": 0.9104574537346128,
+      "total_tokens": 1730
+    }
+  }
+}
