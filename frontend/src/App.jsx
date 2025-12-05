@@ -7,6 +7,11 @@ function App() {
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [theme, setTheme] = useState(() => {
+    // Check localStorage or default to light
+    const savedTheme = localStorage.getItem('theme')
+    return savedTheme || 'light'
+  })
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
 
@@ -21,6 +26,16 @@ function App() {
   useEffect(() => {
     inputRef.current?.focus()
   }, [])
+
+  useEffect(() => {
+    // Apply theme to document root
+    document.documentElement.setAttribute('data-theme', theme)
+    localStorage.setItem('theme', theme)
+  }, [theme])
+
+  const toggleTheme = () => {
+    setTheme(prev => prev === 'light' ? 'dark' : 'light')
+  }
 
   const sendMessage = async (e) => {
     e.preventDefault()
@@ -77,11 +92,34 @@ function App() {
 
   return (
     <div className="app">
+      <div className="created-by">
+        <div className="created-by-content">
+          <span className="created-by-label">Created by</span>
+          <a href="https://www.linkedin.com/in/ajay-drew/" target="_blank" rel="noopener noreferrer" className="created-by-name">
+            Ajay A
+          </a>
+          <a href="mailto:drewjay05@gmail.com" className="created-by-email">
+            drewjay05@gmail.com
+          </a>
+        </div>
+      </div>
+      
       <header className="app-header">
         <div className="header-content">
           <h1>Mistral Indian Law</h1>
           <p className="subtitle">Your AI Assistant for Indian Legal Matters</p>
         </div>
+        <button className="theme-toggle" onClick={toggleTheme} aria-label="Toggle theme">
+          {theme === 'light' ? (
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M10 3V1M10 19V17M17 10H19M1 10H3M15.657 15.657L16.97 16.97M3.343 3.343L4.657 4.657M15.657 4.343L16.97 3.03M3.343 16.657L4.657 15.343M13 10C13 11.6569 11.6569 13 10 13C8.34315 13 7 11.6569 7 10C7 8.34315 8.34315 7 10 7C11.6569 7 13 8.34315 13 10Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          ) : (
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M17.293 13.293C16.3785 14.2075 15.2348 14.8621 13.9954 15.2009C12.756 15.5397 11.4604 15.5532 10.2146 15.2404C8.96879 14.9276 7.80947 14.2975 6.88484 13.3729C5.96021 12.4483 5.33007 11.2889 5.01729 10.0431C4.7045 8.79729 4.71798 7.50171 5.05677 6.26229C5.39557 5.02287 6.05018 3.87918 6.96469 2.96469C7.8792 2.05018 9.02289 1.39557 10.2623 1.05677C11.5017 0.717975 12.7973 0.704495 14.0431 1.01728C15.2889 1.33007 16.4483 1.96021 17.3729 2.88484C18.2975 3.80947 18.9276 4.96879 19.2404 6.21459C19.5532 7.46039 19.5397 8.75597 19.2009 9.99539C18.8621 11.2348 18.2075 12.3785 17.293 13.293Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          )}
+        </button>
       </header>
 
       <main className="chat-container">
