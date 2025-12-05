@@ -77,4 +77,4 @@ htmlcov/
 !tsconfig.json
 
 # Evaluation results (can be large)
-evaluation_results.json
+# evaluation_results.json  # Allow evaluation results to be tracked
