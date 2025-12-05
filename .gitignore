@@ -20,6 +20,7 @@ build/
 # Jupyter Notebook
 .ipynb_checkpoints
 *.ipynb
+!script/*.ipynb
 
 # IDE
 .vscode/
