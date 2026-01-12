@@ -60,13 +60,14 @@ def sample_messages():
 @pytest.fixture(scope="module")
 def test_client():
     """Create a test client for FastAPI."""
-    from backend.main import app, bundle
+    from backend.main import app, bundle, rag_system, document_store
     import httpx
     from httpx._transports.asgi import ASGITransport
     
     async def mock_generate(prompt, max_new_tokens, temperature, top_p):
         return "Mock generated response for: " + prompt
     
+    # Mock model bundle
     bundle._model = MagicMock()
     bundle._tokenizer = MagicMock()
     bundle.generate = AsyncMock(side_effect=mock_generate)
@@ -75,6 +76,39 @@ def test_client():
     bundle._model.parameters.return_value = iter([mock_param])
     bundle.tokenizer.decode.return_value = "Mock response"
     bundle.tokenizer.eos_token_id = 2
+    
+    # Mock RAG system
+    rag_system.search = MagicMock(return_value=[
+        {'text': 'Mock document chunk 1', 'metadata': {}, 'distance': 0.1},
+        {'text': 'Mock document chunk 2', 'metadata': {}, 'distance': 0.2}
+    ])
+    rag_system.format_context = MagicMock(return_value="Based on the following documents:\n[Mock context]")
+    rag_system.add_documents = MagicMock()
+    rag_system.delete_document = MagicMock()
+    rag_system.count_documents = MagicMock(return_value=1)
+    
+    # Mock document store
+    document_store.count = MagicMock(return_value=1)
+    document_store.get_all = MagicMock(return_value=[
+        {
+            'id': 'test-doc-1',
+            'filename': 'test.pdf',
+            'upload_date': '2024-01-01T00:00:00',
+            'file_size': 1024,
+            'chunk_count': 5,
+            'rag_id': 'test-rag-1'
+        }
+    ])
+    document_store.get = MagicMock(return_value={
+        'id': 'test-doc-1',
+        'filename': 'test.pdf',
+        'upload_date': '2024-01-01T00:00:00',
+        'file_size': 1024,
+        'chunk_count': 5,
+        'rag_id': 'test-rag-1'
+    })
+    document_store.create = MagicMock(return_value='test-doc-1')
+    document_store.delete = MagicMock(return_value=True)
     
     try:
         import nest_asyncio
@@ -132,6 +166,12 @@ def test_client():
             """Synchronous OPTIONS request."""
             client = self._get_client()
             response = self._run_async(client.options(url, **kwargs))
+            return self._make_response(response)
+        
+        def delete(self, url, **kwargs):
+            """Synchronous DELETE request."""
+            client = self._get_client()
+            response = self._run_async(client.delete(url, **kwargs))
             return self._make_response(response)
         
         def _make_response(self, async_response):

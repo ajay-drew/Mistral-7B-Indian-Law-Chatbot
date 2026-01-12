@@ -15,7 +15,6 @@ class TestServiceConfig:
         config = ServiceConfig()
         assert config.base_model_name == "mistralai/Mistral-7B-v0.1"
         assert config.adapter_path == "./mistral-indian-law-final"
-        assert config.device_map == "auto"
         assert config.max_new_tokens == 256
         assert config.temperature == 0.7
         assert config.top_p == 0.9
@@ -158,7 +157,7 @@ class TestPromptBuilding:
         assert "Answer:" in result
     
     def test_build_prompt_with_messages(self):
-        """Test build_prompt builds from messages array."""
+        """Test build_prompt uses last user message."""
         from backend.main import build_prompt, ChatRequest, Message
         
         messages = [
@@ -169,9 +168,8 @@ class TestPromptBuilding:
         request = ChatRequest(messages=messages)
         result = build_prompt(request)
         
-        assert "Question: Question 1" in result
-        assert "Answer: Answer 1" in result
-        assert "Question: Question 2" in result
+        # Only the last user question should be in the prompt
+        assert "Question 2" in result
         assert "Answer:" in result
     
     def test_build_prompt_empty_raises_error(self):

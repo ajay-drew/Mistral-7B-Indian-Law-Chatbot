@@ -29,8 +29,28 @@ class TestHealthEndpoint:
 class TestChatEndpoint:
     """Tests for /chat endpoint."""
     
+    def test_chat_requires_documents(self, test_client, sample_prompt):
+        """Test chat endpoint requires documents (RAG mandatory)."""
+        from backend.main import document_store
+        original_count = document_store.count
+        
+        # Mock no documents
+        document_store.count = MagicMock(return_value=0)
+        
+        try:
+            response = test_client.post(
+                "/chat",
+                json={"prompt": sample_prompt}
+            )
+            assert response.status_code == status.HTTP_400_BAD_REQUEST
+            data = response.json()
+            assert "detail" in data
+            assert "document" in data["detail"].lower()
+        finally:
+            document_store.count = original_count
+    
     def test_chat_with_prompt(self, test_client, sample_prompt):
-        """Test chat endpoint with simple prompt."""
+        """Test chat endpoint with simple prompt (with documents)."""
         response = test_client.post(
             "/chat",
             json={"prompt": sample_prompt}
@@ -39,6 +59,10 @@ class TestChatEndpoint:
         data = response.json()
         assert "reply" in data
         assert isinstance(data["reply"], str)
+        # Sources field should be present (may be None or list)
+        assert "sources" in data
+        if data["sources"] is not None:
+            assert isinstance(data["sources"], list)
     
     def test_chat_with_messages(self, test_client, sample_messages):
         """Test chat endpoint with messages array."""
@@ -49,6 +73,8 @@ class TestChatEndpoint:
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
         assert "reply" in data
+        # Sources field should be present
+        assert "sources" in data
     
     def test_chat_with_custom_parameters(self, test_client):
         """Test chat endpoint with custom generation parameters."""
@@ -182,4 +208,60 @@ class TestRequestValidation:
             headers={}
         )
         assert response.status_code in [status.HTTP_200_OK, status.HTTP_422_UNPROCESSABLE_ENTITY]
+
+
+class TestDocumentEndpoints:
+    """Tests for document management endpoints."""
+    
+    def test_list_documents(self, test_client):
+        """Test listing all documents."""
+        response = test_client.get("/documents")
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        assert "documents" in data
+        assert "total" in data
+        assert isinstance(data["documents"], list)
+    
+    def test_get_document(self, test_client):
+        """Test getting a specific document."""
+        response = test_client.get("/documents/test-doc-1")
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        assert "id" in data
+        assert "filename" in data
+        assert "upload_date" in data
+        assert "file_size" in data
+        assert "chunk_count" in data
+    
+    def test_get_nonexistent_document(self, test_client):
+        """Test getting a non-existent document returns 404."""
+        from backend.main import document_store
+        original_get = document_store.get
+        document_store.get = MagicMock(return_value=None)
+        
+        try:
+            response = test_client.get("/documents/nonexistent")
+            assert response.status_code == status.HTTP_404_NOT_FOUND
+        finally:
+            document_store.get = original_get
+    
+    def test_delete_document(self, test_client):
+        """Test deleting a document."""
+        response = test_client.delete("/documents/test-doc-1")
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        assert "message" in data
+        assert "id" in data
+    
+    def test_delete_nonexistent_document(self, test_client):
+        """Test deleting a non-existent document returns 404."""
+        from backend.main import document_store
+        original_get = document_store.get
+        document_store.get = MagicMock(return_value=None)
+        
+        try:
+            response = test_client.delete("/documents/nonexistent")
+            assert response.status_code == status.HTTP_404_NOT_FOUND
+        finally:
+            document_store.get = original_get
 

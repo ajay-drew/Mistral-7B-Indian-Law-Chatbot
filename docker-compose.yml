@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mistral-law-backend
+    ports:
+      - "2347:2347"
+    environment:
+      - BASE_MODEL_NAME=mistralai/Mistral-7B-v0.1
+      - ADAPTER_PATH=./mistral-indian-law-final
+      - DEVICE_MAP=auto
+      - API_KEY=${API_KEY:-}
+      - CORS_ORIGINS=http://localhost:5173,http://localhost:3000
+    volumes:
+      - ./mistral-indian-law-final:/app/mistral-indian-law-final
+      - ./data:/app/data
+      - ./offload_dir:/app/offload_dir
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:2347/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 300s  # Allow 5 minutes for model loading
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: mistral-law-frontend
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_URL=http://localhost:2347/chat
+      - VITE_API_KEY=${API_KEY:-}
+    depends_on:
+      - backend
+    restart: unless-stopped
