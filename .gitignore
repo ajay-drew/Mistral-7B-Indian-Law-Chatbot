@@ -2,7 +2,7 @@
 .env
 frontend/.env
 *.env
-
+.cursorrules
 # Python
 __pycache__/
 *.py[cod]
@@ -76,5 +76,18 @@ htmlcov/
 !package-lock.json
 !tsconfig.json
 
-# Evaluation results (can be large)
-# evaluation_results.json  # Allow evaluation results to be tracked
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+data/chroma_db/
+data/documents.json
+
+# Evaluation and comparison results
+evaluation_results.json
+model_comparison_results.json
+contamination_detection_results.json
+
+# Training data (if contains sensitive info)
+data/training_data.json
+data/training_data_cleaned.json
