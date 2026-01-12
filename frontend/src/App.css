@@ -367,7 +367,8 @@
   box-shadow: var(--shadow-sm);
 }
 
-.attach-button {
+.attach-button,
+.stop-button {
   background: transparent;
   color: var(--text-secondary);
   border: none;
@@ -381,6 +382,20 @@
   transition: all 0.2s ease;
   flex-shrink: 0;
   padding: 0;
+}
+
+.stop-button {
+  color: #ef4444;
+}
+
+.stop-button:hover {
+  background: rgba(239, 68, 68, 0.1);
+  color: #dc2626;
+  transform: scale(1.1);
+}
+
+.stop-button:active {
+  transform: scale(0.95);
 }
 
 .attach-button:hover:not(:disabled) {

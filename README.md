@@ -238,6 +238,52 @@ This will:
 
 The script tests 8 different Indian Law queries and provides summary statistics comparing both models.
 
+## Dataset Quality Assurance
+
+### Detect Dataset Contamination
+
+Check if test/evaluation questions appear in training data (which would inflate metrics):
+
+```bash
+python script/detect_contamination.py
+```
+
+This will:
+- Compare training data against test/evaluation sets
+- Identify overlapping questions
+- Calculate contamination rate
+- Generate `contamination_detection_results.json` with detailed findings
+
+**What to Check:**
+- **Question Overlap**: Are test questions in training data?
+- **Answer Overlap**: Do test questions match training answers?
+- **Contamination Rate**: What percentage of test data is contaminated?
+
+### Clean Training Data
+
+Remove contaminated samples and instruction leakage from training data:
+
+```bash
+python script/clean_training_data.py
+```
+
+This will:
+- Remove test samples from training data
+- Remove samples with instruction leakage patterns (STOP, Answer:, Query:, etc.)
+- Generate cleaned training data: `data/training_data_cleaned.json`
+- Generate cleaning report: `data_cleaning_report.json`
+
+**Instruction Leakage Patterns Removed:**
+- "STOP after providing..."
+- "STOP. This is the end..."
+- "Query:", "Question:", "Answer:" patterns
+- Other instruction-like phrases
+
+**Why This Matters:**
+- **Dataset Contamination**: Inflated metrics don't reflect real performance
+- **Instruction Leakage**: Model generates instruction text in responses
+- **Clean Data**: Better generalization and professional outputs
+
 ## API Authentication
 
 The API supports optional API key authentication for security.

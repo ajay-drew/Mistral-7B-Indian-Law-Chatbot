@@ -77,33 +77,19 @@ logging.getLogger("transformers").setLevel(logging.WARNING)
 logging.getLogger("peft").setLevel(logging.WARNING)
 logging.getLogger("torch").setLevel(logging.WARNING)
 
-# System prompt for Indian Law Assistant
+# System prompt for Indian Law Assistant (cleaned to prevent instruction leakage)
 SYSTEM_PROMPT = """You are a professional Indian Law Assistant providing informational answers about Indian legal matters—constitutional law, criminal law, civil law, procedures, and jurisprudence.
 
-ANSWERING QUESTIONS:
-When document context is provided above, prioritize it as your primary source. Cite the document by referencing specific provisions or sections mentioned in the context. If the context is insufficient, supplement with your knowledge of Indian law.
+When document context is provided, prioritize it as your primary source. Cite the document by referencing specific provisions or sections mentioned in the context. If the context is insufficient, supplement with your knowledge of Indian law.
 
 When no document context is provided, answer based on your training in Indian legal matters. Cite relevant sections, acts, or provisions (e.g., "Section 302 IPC", "Article 21 of the Constitution").
 
-RESPONSE FORMAT:
-- Answer the question directly and completely
-- Use proper legal terminology with citations
-- For complex answers, use bullet points or numbered lists
-- STOP immediately after providing the answer and disclaimer
-- NEVER generate additional questions, queries, or new content after your response
-- NEVER start a new line with "Query:", "Question:", or "User Question:"
+Answer questions directly and completely. Use proper legal terminology with citations. For complex answers, use bullet points or numbered lists.
 
-GREETING BEHAVIOR:
 When users greet you, respond: "Hello! I'm your Indian Law Assistant. I can help with questions about Indian legal matters including constitutional law, criminal law, civil law, and legal procedures. What would you like to know?"
 
-IMPORTANT RULES:
-- Never include system tags, role indicators, or metadata in responses
-- Never provide legal advice as professional counsel—only informational answers
-- Acknowledge uncertainty when you don't know something
-- Redirect off-topic questions to Indian legal matters
-- Maintain a professional, respectful tone
+Never include system tags, role indicators, or metadata in responses. Never provide legal advice as professional counsel—only informational answers. Acknowledge uncertainty when you don't know something. Redirect off-topic questions to Indian legal matters. Maintain a professional, respectful tone.
 
-MANDATORY DISCLAIMER:
 End every response with: "I may be incorrect. For accurate and verified legal advice, please consult a qualified lawyer."
 """
 
@@ -137,7 +123,7 @@ class ChatResponse(BaseModel):
 class ServiceConfig(BaseModel):
     base_model_name: str = "mistralai/Mistral-7B-v0.1"
     adapter_path: str = "./mistral-indian-law-final"
-    max_new_tokens: int = 256
+    max_new_tokens: int = 200
     temperature: float = 0.2  # Lower for legal accuracy
     top_p: float = 0.9
     repetition_penalty: float = 1.25  # Increased to prevent Q&A pattern repetition
@@ -269,6 +255,7 @@ class ModelBundle:
         self._load_lock = asyncio.Lock()
         self._inference_lock = asyncio.Lock()
         self._loading_failed = False  # Prevent retry loops on persistent failures
+        self._active_generations: dict[str, asyncio.Event] = {}  # Track active generation requests for cancellation
         
         # Stop sequences to prevent Q&A chain reactions
         self._stop_sequences = [
@@ -295,6 +282,111 @@ class ModelBundle:
             "\nStop.",
             "Stop.",
         ]
+    
+    def _clean_instruction_leakage(self, text: str) -> str:
+        """Remove instruction leakage patterns from response.
+        
+        This function removes:
+        - Explicit instruction patterns (STOP, Answer:, Query:, etc.)
+        - Continuation patterns (User Question:, Question:, etc.)
+        - Instruction-like phrases that leaked from training data
+        """
+        import re
+        
+        # Step 1: Remove explicit instruction patterns using regex
+        instruction_patterns = [
+            r'STOP\s+after\s+providing.*?disclaimer.*?',
+            r'STOP\.\s+This\s+is\s+the\s+end.*?',
+            r'STOP\.\s+Do\s+not\s+generate.*?',
+            r'Provide\s+a\s+direct\s+answer.*?STOP.*?',
+            r'Answer\s+it\s+completely\s+and\s+then\s+STOP.*?',
+            r'STOP\s+immediately\s+after.*?',
+        ]
+        
+        for pattern in instruction_patterns:
+            text = re.sub(pattern, '', text, flags=re.IGNORECASE | re.DOTALL)
+        
+        # Step 2: Remove stop markers (backup for stopping criteria)
+        stop_markers = self._stop_sequences + ["\n\n---\n"]
+        
+        # Find the earliest stop marker occurrence
+        earliest_idx = len(text)
+        for marker in stop_markers:
+            idx = text.find(marker)
+            if idx != -1 and idx < earliest_idx:
+                earliest_idx = idx
+        
+        # If we found a stop marker, cut everything after it
+        if earliest_idx < len(text):
+            text = text[:earliest_idx].strip()
+        
+        # Step 3: Cut everything after disclaimer if present (hard stop)
+        disclaimer_end = "qualified lawyer."
+        if disclaimer_end in text:
+            idx = text.find(disclaimer_end) + len(disclaimer_end)
+            text = text[:idx].strip()
+        
+        # Step 4: Remove lines that start with instruction patterns
+        lines = text.split('\n')
+        cleaned_lines = []
+        skip_remaining = False
+        
+        for line in lines:
+            if skip_remaining:
+                break
+                
+            line_stripped = line.strip()
+            line_lower = line_stripped.lower()
+            
+            # Skip lines that start with instruction patterns
+            if any(line_lower.startswith(prefix) for prefix in [
+                'stop', 'query:', 'question:', 'user question:', 
+                'user:', 'answer:', 'provide a direct'
+            ]):
+                # Don't add this line, and stop processing remaining lines
+                skip_remaining = True
+                continue
+            
+            # Skip lines containing instruction phrases
+            if any(phrase in line_lower for phrase in [
+                'stop answering', 'stop.', 'stop generating', 
+                'stop responding', 'this is the end'
+            ]):
+                continue
+            
+            # Keep this line
+            cleaned_lines.append(line)
+        
+        text = '\n'.join(cleaned_lines).strip()
+        
+        # Step 5: Final cleanup - Remove trailing instruction phrases
+        stop_phrases = [
+            'stop answering', 'stop.', 'stop generating', 
+            'stop responding', 'stop after providing'
+        ]
+        for phrase in stop_phrases:
+            text_lower = text.lower()
+            if text_lower.endswith(phrase.lower()):
+                # Find the last occurrence and remove it
+                idx = text_lower.rfind(phrase.lower())
+                if idx > 0:
+                    text = text[:idx].strip()
+                    break
+        
+        # Step 6: Ensure disclaimer is at the end (if present)
+        disclaimer = "I may be incorrect. For accurate and verified legal advice, please consult a qualified lawyer."
+        disclaimer_lower = disclaimer.lower()
+        text_lower = text.lower()
+        
+        if disclaimer_lower in text_lower:
+            # Remove disclaimer from middle, keep only at end
+            text = re.sub(re.escape(disclaimer), '', text, flags=re.IGNORECASE)
+            text = text.strip()
+            # Add disclaimer at the end if not already there
+            if not text.lower().endswith(disclaimer_lower):
+                text = text + '\n\n' + disclaimer
+        
+        return text.strip()
     
     def _log_gpu_memory(self, stage: str) -> None:
         """Log GPU memory usage at various stages."""
@@ -547,52 +639,8 @@ class ModelBundle:
             input_length = inputs["input_ids"].shape[1]
             decoded = self.tokenizer.decode(outputs[0][input_length:], skip_special_tokens=True)
             
-            # Post-processing: Aggressive stop marker filtering (backup)
-            # Check for any continuation patterns and cut immediately
-            stop_markers = self._stop_sequences + ["\n\n---\n"]
-            
-            # Find the earliest stop marker occurrence
-            earliest_idx = len(decoded)
-            for marker in stop_markers:
-                idx = decoded.find(marker)
-                if idx != -1 and idx < earliest_idx:
-                    earliest_idx = idx
-            
-            # If we found a stop marker, cut everything after it
-            if earliest_idx < len(decoded):
-                decoded = decoded[:earliest_idx].strip()
-            
-            # Cut everything after disclaimer if present (hard stop)
-            disclaimer_end = "qualified lawyer."
-            if disclaimer_end in decoded:
-                idx = decoded.find(disclaimer_end) + len(disclaimer_end)
-                decoded = decoded[:idx].strip()
-            
-            # Final check: Remove any trailing continuation patterns
-            # This catches cases where the model starts generating new content
-            lines = decoded.split('\n')
-            cleaned_lines = []
-            for line in lines:
-                line_stripped = line.strip()
-                # Stop if we see a line that looks like a new query/question
-                if line_stripped.startswith(('Query:', 'Question:', 'User Question:', 'User:')):
-                    break
-                # Stop if we see "Stop answering" or similar phrases
-                if any(phrase in line_stripped.lower() for phrase in ['stop answering', 'stop.', 'stop generating']):
-                    break
-                cleaned_lines.append(line)
-            
-            decoded = '\n'.join(cleaned_lines).strip()
-            
-            # Final cleanup: Remove any trailing "Stop answering" or similar phrases
-            stop_phrases = ['stop answering', 'stop.', 'stop generating', 'stop responding']
-            for phrase in stop_phrases:
-                if decoded.lower().endswith(phrase.lower()):
-                    # Find the last occurrence and remove it
-                    idx = decoded.lower().rfind(phrase.lower())
-                    if idx > 0:
-                        decoded = decoded[:idx].strip()
-                        break
+            # Post-processing: Remove instruction leakage and stop markers
+            decoded = self._clean_instruction_leakage(decoded)
             
             return decoded
 
@@ -610,15 +658,27 @@ class ModelBundle:
         prompt: str, 
         max_new_tokens: int, 
         temperature: float, 
-        top_p: float
+        top_p: float,
+        cancellation_event: Optional[asyncio.Event] = None
     ):
-        """Stream tokens as they're generated."""
+        """Stream tokens as they're generated.
+        
+        Args:
+            prompt: Input prompt
+            max_new_tokens: Maximum tokens to generate
+            temperature: Sampling temperature
+            top_p: Top-p sampling parameter
+            cancellation_event: Optional asyncio.Event to signal cancellation
+        """
         await self.ensure_loaded()
         
         async with self._inference_lock:
             try:
-                async for token in self._generate_stream_internal(prompt, max_new_tokens, temperature, top_p):
+                async for token in self._generate_stream_internal(prompt, max_new_tokens, temperature, top_p, cancellation_event):
                     yield token
+            except asyncio.CancelledError:
+                logger.info("Generation cancelled by user")
+                raise
             except Exception as e:
                 logger.error(f"Streaming generation error: {e}")
                 raise
@@ -628,7 +688,8 @@ class ModelBundle:
         prompt: str, 
         max_new_tokens: int, 
         temperature: float, 
-        top_p: float
+        top_p: float,
+        cancellation_event: Optional[asyncio.Event] = None
     ):
         """Internal streaming generation logic using TextIteratorStreamer."""
         from transformers import TextIteratorStreamer
@@ -688,12 +749,20 @@ class ModelBundle:
         
         # Token batching for faster SSE delivery
         token_batch = []
-        batch_size = 3  # Send every 3 tokens or when batch reaches certain size
+        batch_size = 5  # Send every 5 tokens or when batch reaches certain size (increased for better throughput)
         last_yield_time = time.time()
-        batch_timeout = 0.05  # Send batch every 50ms max
+        batch_timeout = 0.03  # Send batch every 30ms max (reduced for faster delivery)
         
         try:
             while True:
+                # Check for cancellation
+                if cancellation_event and cancellation_event.is_set():
+                    logger.info("Generation cancelled via stop endpoint")
+                    # Flush any remaining tokens in batch before stopping
+                    if token_batch:
+                        yield ''.join(token_batch)
+                    break
+                
                 # Check for exceptions
                 if not exception_queue.empty():
                     raise exception_queue.get()
@@ -707,7 +776,7 @@ class ModelBundle:
                 
                 # Get next token from streamer (reduced timeout for faster delivery)
                 try:
-                    new_text = streamer.text_queue.get(timeout=0.05)  # Reduced from 0.1s to 0.05s
+                    new_text = streamer.text_queue.get(timeout=0.02)  # Reduced to 20ms for faster polling
                     if new_text is None:  # End signal
                         # Flush batch before ending
                         if token_batch:
@@ -727,64 +796,68 @@ class ModelBundle:
                     if len(text_buffer) > buffer_size:
                         text_buffer = text_buffer[-buffer_size:]
                     
-                    # Real-time stop marker detection with rolling buffer
-                    full_text = generated_text
-                    
-                    # Check for stop patterns in full text (more reliable)
-                    should_stop = False
-                    earliest_idx = len(full_text)
-                    
-                    # Quick check: Look for stop patterns in recent buffer first (faster)
-                    check_text = text_buffer.lower()
-                    stop_patterns_quick = ['query:', 'question:', 'user:', 'stop answering', 'stop.', 'qualified lawyer.']
-                    for pattern in stop_patterns_quick:
-                        if pattern in check_text:
-                            # Found in buffer, now check full text for exact position
-                            should_stop = True
-                            break
-                    
-                    # If quick check found something, do full check
-                    if should_stop:
-                        # Check all stop sequences (case-insensitive) and find earliest occurrence
-                        for marker in self._stop_sequences + ["\n\n---\n"]:
-                            marker_lower = marker.lower()
-                            if marker_lower in full_text.lower():
-                                idx = full_text.lower().find(marker_lower)
-                                if idx > 0 and idx < earliest_idx:
-                                    earliest_idx = idx
-                    
-                        # Also check for lines starting with query/question patterns or containing stop phrases
-                        lines = full_text.split('\n')
-                        for i, line in enumerate(lines):
-                            line_stripped = line.strip().lower()
-                            # Check for query/question patterns
-                            if line_stripped.startswith(('query:', 'question:', 'user question:', 'user:')):
-                                line_start = sum(len(l) + 1 for l in lines[:i])
-                                if line_start < earliest_idx:
-                                    earliest_idx = line_start
-                                    break
-                            # Check for "Stop answering" or similar phrases
-                            if any(phrase in line_stripped for phrase in ['stop answering', 'stop.', 'stop generating', 'stop responding']):
-                                line_start = sum(len(l) + 1 for l in lines[:i])
-                                if line_start < earliest_idx:
-                                    earliest_idx = line_start
-                                    break
-                    
-                    # Check for disclaimer end (hard stop after "qualified lawyer.")
-                    if "qualified lawyer." in full_text:
-                        idx = full_text.find("qualified lawyer.") + len("qualified lawyer.")
-                        if idx < earliest_idx:
-                            earliest_idx = idx
-                            should_stop = True
-                    
-                    # Decide when to yield batch
+                    # Decide when to yield batch (check timing first, stop detection only when needed)
                     current_time = time.time()
                     time_since_yield = current_time - last_yield_time
                     should_yield_batch = (
                         len(token_batch) >= batch_size or  # Batch size reached
-                        time_since_yield >= batch_timeout or  # Timeout reached
-                        should_stop  # Stop pattern detected
+                        time_since_yield >= batch_timeout  # Timeout reached
                     )
+                    
+                    # Only do stop detection when we're about to yield (major performance optimization)
+                    should_stop = False
+                    earliest_idx = len(generated_text)
+                    
+                    if should_yield_batch:
+                        # Real-time stop marker detection with rolling buffer (only when batching)
+                        full_text = generated_text
+                        
+                        # Quick check: Look for stop patterns in recent buffer first (faster)
+                        check_text = text_buffer.lower()
+                        stop_patterns_quick = ['query:', 'question:', 'user:', 'stop answering', 'stop.', 'qualified lawyer.']
+                        for pattern in stop_patterns_quick:
+                            if pattern in check_text:
+                                # Found in buffer, now check full text for exact position
+                                should_stop = True
+                                break
+                        
+                        # If quick check found something, do full check
+                        if should_stop:
+                            # Check all stop sequences (case-insensitive) and find earliest occurrence
+                            for marker in self._stop_sequences + ["\n\n---\n"]:
+                                marker_lower = marker.lower()
+                                if marker_lower in full_text.lower():
+                                    idx = full_text.lower().find(marker_lower)
+                                    if idx > 0 and idx < earliest_idx:
+                                        earliest_idx = idx
+                            
+                            # Also check for lines starting with query/question patterns or containing stop phrases
+                            lines = full_text.split('\n')
+                            for i, line in enumerate(lines):
+                                line_stripped = line.strip().lower()
+                                # Check for query/question patterns
+                                if line_stripped.startswith(('query:', 'question:', 'user question:', 'user:')):
+                                    line_start = sum(len(l) + 1 for l in lines[:i])
+                                    if line_start < earliest_idx:
+                                        earliest_idx = line_start
+                                        break
+                                # Check for "Stop answering" or similar phrases
+                                if any(phrase in line_stripped for phrase in ['stop answering', 'stop.', 'stop generating', 'stop responding']):
+                                    line_start = sum(len(l) + 1 for l in lines[:i])
+                                    if line_start < earliest_idx:
+                                        earliest_idx = line_start
+                                        break
+                        
+                        # Check for disclaimer end (hard stop after "qualified lawyer.")
+                        if "qualified lawyer." in full_text:
+                            idx = full_text.find("qualified lawyer.") + len("qualified lawyer.")
+                            if idx < earliest_idx:
+                                earliest_idx = idx
+                                should_stop = True
+                        
+                        # If stop detected, add to yield condition
+                        if should_stop:
+                            should_yield_batch = True
                     
                     if should_yield_batch:
                         if token_batch:
@@ -815,7 +888,7 @@ class ModelBundle:
                         token_batch = []
                         last_yield_time = current_time
                     # Small delay to avoid busy waiting
-                    await asyncio.sleep(0.005)  # Reduced from 0.01s to 0.005s
+                    await asyncio.sleep(0.002)  # Reduced to 2ms for faster polling
                     continue
         finally:
             # Wait for thread to finish (with timeout)
@@ -989,10 +1062,10 @@ def build_prompt(payload: ChatRequest, rag_context: str = "", has_rag: bool = Fa
     
     # Add RAG context BEFORE question if available (better attention)
     if has_rag and rag_context:
-        parts.append(f"\n\nDOCUMENT CONTEXT:\n{rag_context}")
+        parts.append(f"\n\nDocument context:\n{rag_context}")
     
-    # Add user question with simple prompt (changed from "User Question:" to avoid triggering continuation)
-    parts.append(f"\n\nQuery: {user_question}\n\nAnswer:")
+    # Simple prompt format - NO instruction patterns that could leak
+    parts.append(f"\n\nQuestion: {user_question}\n\nResponse:")
     
     return "\n".join(parts)
 
@@ -1065,6 +1138,11 @@ async def chat_stream(payload: ChatRequest, request: Request):
     """
     import json
     
+    # Generate unique request ID for cancellation tracking
+    request_id = str(uuid.uuid4())
+    cancellation_event = asyncio.Event()
+    bundle._active_generations[request_id] = cancellation_event
+    
     # Extract user question
     user_question = payload.prompt
     if not user_question and payload.messages:
@@ -1074,6 +1152,8 @@ async def chat_stream(payload: ChatRequest, request: Request):
                 break
     
     if not user_question:
+        # Clean up on error
+        bundle._active_generations.pop(request_id, None)
         raise HTTPException(status_code=400, detail="No user question provided")
     
     try:
@@ -1108,29 +1188,69 @@ async def chat_stream(payload: ChatRequest, request: Request):
                     max_new_tokens=payload.max_new_tokens,
                     temperature=payload.temperature,
                     top_p=payload.top_p,
+                    cancellation_event=cancellation_event,
                 ):
+                    # Check cancellation before yielding
+                    if cancellation_event.is_set():
+                        yield f"data: {json.dumps({'done': True, 'cancelled': True})}\n\n"
+                        break
+                    
                     full_response += token_batch
                     # Format as Server-Sent Events (batched tokens for faster delivery)
                     yield f"data: {json.dumps({'token': token_batch, 'done': False})}\n\n"
                 
-                # Send sources if available
-                if source_filenames:
-                    yield f"data: {json.dumps({'sources': source_filenames, 'done': False})}\n\n"
-                
-                # Send completion signal
-                yield f"data: {json.dumps({'done': True})}\n\n"
+                # Only send sources and completion if not cancelled
+                if not cancellation_event.is_set():
+                    # Send sources if available
+                    if source_filenames:
+                        yield f"data: {json.dumps({'sources': source_filenames, 'done': False})}\n\n"
+                    
+                    # Send completion signal
+                    yield f"data: {json.dumps({'done': True})}\n\n"
+            except asyncio.CancelledError:
+                logger.info(f"Generation cancelled for request {request_id}")
+                yield f"data: {json.dumps({'done': True, 'cancelled': True})}\n\n"
             except Exception as e:
                 logger.error(f"Streaming error: {e}")
                 yield f"data: {json.dumps({'error': str(e), 'done': True})}\n\n"
+            finally:
+                # Clean up cancellation tracking
+                bundle._active_generations.pop(request_id, None)
         
         return StreamingResponse(generate(), media_type="text/event-stream")
         
     except HTTPException:
+        # Clean up on HTTP exception
+        bundle._active_generations.pop(request_id, None)
         raise
     except Exception as exc:
+        # Clean up on other exceptions
+        bundle._active_generations.pop(request_id, None)
         logger.error(f"Unexpected error in chat stream: {exc}")
         logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail="Internal server error during streaming")
+
+
+@app.post("/chat/stop", dependencies=[Depends(verify_api_key)])
+async def stop_generation():
+    """
+    Stop all active generation requests.
+    This will cancel any ongoing streaming generation.
+    """
+    stopped_count = 0
+    for request_id, cancellation_event in bundle._active_generations.items():
+        if not cancellation_event.is_set():
+            cancellation_event.set()
+            stopped_count += 1
+            logger.info(f"Stopped generation for request {request_id}")
+    
+    # Clean up all cancelled events
+    bundle._active_generations.clear()
+    
+    return {
+        "message": "Generation stopped",
+        "stopped_requests": stopped_count
+    }
 
 
 # Document Management

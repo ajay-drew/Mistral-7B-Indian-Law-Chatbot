@@ -4,6 +4,7 @@ import './App.css'
 const API_BASE = import.meta.env.VITE_API_URL?.replace('/chat', '') || 'http://localhost:2347'
 const CHAT_API_URL = `${API_BASE}/chat`
 const CHAT_STREAM_API_URL = `${API_BASE}/chat/stream`
+const CHAT_STOP_API_URL = `${API_BASE}/chat/stop`
 const DOCUMENTS_API_URL = `${API_BASE}/documents`
 const HEALTH_API_URL = `${API_BASE}/health`
 const API_KEY = import.meta.env.VITE_API_KEY || null
@@ -85,6 +86,7 @@ function App() {
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
   const fileInputRef = useRef(null)
+  const abortControllerRef = useRef(null)  // For cancelling fetch requests
 
   const hasDocuments = documents.length > 0
 
@@ -323,33 +325,16 @@ function App() {
       headers['X-API-Key'] = API_KEY
     }
 
-    const response = await fetch(CHAT_STREAM_API_URL, {
-      method: 'POST',
-      headers: headers,
-      body: JSON.stringify({
-        prompt: userMessage,
-        max_new_tokens: 512,
-        temperature: 0.7,
-        top_p: 0.9
-      }),
-    })
+    // Create abort controller for this request
+    const abortController = new AbortController()
+    abortControllerRef.current = abortController
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ detail: 'Request failed' }))
-      throw new Error(errorData.detail || `HTTP error! status: ${response.status}`)
-    }
-
-    const reader = response.body.getReader()
-    const decoder = new TextDecoder()
-    let buffer = ''
+    // Declare variables outside try block so they're accessible in catch
     let fullContent = ''
-    let sources = null
-    
-    // Batch state updates for better performance (update every 50ms or when batch fills)
     let updateBuffer = ''
     let lastUpdateTime = Date.now()
-    const UPDATE_INTERVAL = 50 // ms
-    const MAX_BUFFER_SIZE = 20 // characters before forcing update
+    const UPDATE_INTERVAL = 16 // ms (~60fps for smoother updates)
+    const MAX_BUFFER_SIZE = 50 // characters before forcing update (increased for better batching)
     
     const flushUpdate = () => {
       if (updateBuffer) {
@@ -363,77 +348,151 @@ function App() {
         lastUpdateTime = Date.now()
       }
     }
-    
-    // Use requestAnimationFrame for smooth updates
-    let rafId = null
-    const scheduleUpdate = () => {
-      if (rafId) return // Already scheduled
-      rafId = requestAnimationFrame(() => {
-        flushUpdate()
-        rafId = null
-      })
-    }
 
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) {
-        // Flush any remaining buffer
-        flushUpdate()
-        break
+    try {
+      const response = await fetch(CHAT_STREAM_API_URL, {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify({
+          prompt: userMessage,
+          max_new_tokens: 512,
+          temperature: 0.7,
+          top_p: 0.9
+        }),
+        signal: abortController.signal,
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: 'Request failed' }))
+        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`)
       }
 
-      buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n')
-      buffer = lines.pop() || ''
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let sources = null
 
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          const data = line.slice(6).trim()
-          if (data === '' || data === '[DONE]') continue
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) {
+          // Flush any remaining buffer
+          flushUpdate()
+          break
+        }
 
-          try {
-            const parsed = JSON.parse(data)
-            
-            if (parsed.token) {
-              // Add to update buffer (batched tokens from backend)
-              updateBuffer += parsed.token
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6).trim()
+            if (data === '' || data === '[DONE]') continue
+
+            try {
+              const parsed = JSON.parse(data)
               
-              // Schedule update if buffer is large enough or timeout reached
-              const timeSinceUpdate = Date.now() - lastUpdateTime
-              if (updateBuffer.length >= MAX_BUFFER_SIZE || timeSinceUpdate >= UPDATE_INTERVAL) {
-                flushUpdate()
-              } else {
-                scheduleUpdate()
+              if (parsed.token) {
+                // Add to update buffer (batched tokens from backend)
+                updateBuffer += parsed.token
+                
+                // Flush immediately if buffer is large enough or timeout reached (simplified, no RAF)
+                const timeSinceUpdate = Date.now() - lastUpdateTime
+                if (updateBuffer.length >= MAX_BUFFER_SIZE || timeSinceUpdate >= UPDATE_INTERVAL) {
+                  flushUpdate()
+                }
               }
+              
+              if (parsed.sources) {
+                sources = parsed.sources
+              }
+              
+              if (parsed.done) {
+                // Final flush and update with sources
+                flushUpdate()
+                setMessages(prev => prev.map(msg => 
+                  msg.id === assistantMessageId 
+                    ? { 
+                        ...msg, 
+                        content: fullContent, 
+                        sources: sources,
+                        cancelled: parsed.cancelled || false
+                      }
+                    : msg
+                ))
+                // Clear abort controller
+                abortControllerRef.current = null
+                return
+              }
+              
+              if (parsed.error) {
+                throw new Error(parsed.error)
+              }
+            } catch (e) {
+              if (e instanceof SyntaxError) {
+                // Skip malformed JSON
+                continue
+              }
+              throw e
             }
-            
-            if (parsed.sources) {
-              sources = parsed.sources
-            }
-            
-            if (parsed.done) {
-              // Final flush and update with sources
-              flushUpdate()
-              setMessages(prev => prev.map(msg => 
-                msg.id === assistantMessageId 
-                  ? { ...msg, content: fullContent, sources: sources }
-                  : msg
-              ))
-              return
-            }
-            
-            if (parsed.error) {
-              throw new Error(parsed.error)
-            }
-          } catch (e) {
-            if (e instanceof SyntaxError) {
-              // Skip malformed JSON
-              continue
-            }
-            throw e
           }
         }
       }
+    } catch (error) {
+      // Handle abort error gracefully
+      if (error.name === 'AbortError') {
+        console.log('Stream cancelled by user')
+        // Call stop endpoint to ensure backend cleanup
+        try {
+          const stopHeaders = {}
+          if (API_KEY) {
+            stopHeaders['X-API-Key'] = API_KEY
+          }
+          await fetch(CHAT_STOP_API_URL, {
+            method: 'POST',
+            headers: stopHeaders
+          })
+        } catch (stopError) {
+          // Ignore stop endpoint errors
+        }
+        // Update message to show it was cancelled
+        flushUpdate()
+        setMessages(prev => prev.map(msg => 
+          msg.id === assistantMessageId 
+            ? { ...msg, content: fullContent, cancelled: true }
+            : msg
+        ))
+        abortControllerRef.current = null
+        return
+      }
+      throw error
+    } finally {
+      abortControllerRef.current = null
+    }
+  }
+
+  const stopGeneration = async () => {
+    if (abortControllerRef.current) {
+      // Cancel the fetch request
+      abortControllerRef.current.abort()
+      abortControllerRef.current = null
+      
+      // Also call stop endpoint to ensure backend cleanup
+      try {
+        const headers = {}
+        if (API_KEY) {
+          headers['X-API-Key'] = API_KEY
+        }
+        await fetch(CHAT_STOP_API_URL, {
+          method: 'POST',
+          headers: headers
+        })
+      } catch (error) {
+        // Ignore errors - frontend cancellation is primary
+        console.error('Error calling stop endpoint:', error)
+      }
+      
+      setIsLoading(false)
     }
   }
 
@@ -597,6 +656,11 @@ function App() {
             >
               <div className="message-content">
                 <div className="message-text">{message.content}</div>
+                {message.cancelled && (
+                  <div className="message-cancelled">
+                    <em>Generation stopped by user</em>
+                  </div>
+                )}
                 {message.sources && message.sources.length > 0 && (
                   <div className="message-sources">
                     <strong>Based on:</strong> {message.sources.join(', ')}
@@ -623,14 +687,34 @@ function App() {
 
         <form className="input-container" onSubmit={sendMessage}>
           <div className="input-wrapper">
-            <button
-              type="button"
-              className="attach-button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-              aria-label={uploading ? "Uploading document..." : "Attach PDF document"}
-              title={uploading ? "Uploading..." : "Attach PDF document"}
-            >
+            {isLoading && (
+              <button
+                type="button"
+                className="stop-button"
+                onClick={stopGeneration}
+                aria-label="Stop generation"
+                title="Stop generation"
+              >
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 20 20"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <rect x="4" y="4" width="12" height="12" rx="1" fill="currentColor"/>
+                </svg>
+              </button>
+            )}
+            {!isLoading && (
+              <button
+                type="button"
+                className="attach-button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                aria-label={uploading ? "Uploading document..." : "Attach PDF document"}
+                title={uploading ? "Uploading..." : "Attach PDF document"}
+              >
               {uploading ? (
                 <svg
                   width="20"
@@ -679,7 +763,8 @@ function App() {
                   />
                 </svg>
               )}
-            </button>
+              </button>
+            )}
             <textarea
               ref={inputRef}
               value={input}
